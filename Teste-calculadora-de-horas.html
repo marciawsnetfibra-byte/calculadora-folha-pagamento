@@ -5,11 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calculadora de Adicionais e Reflexos da Folha de Pagamento</title>
     
-    <!-- Firebase SDK Versão Compatível -->
+    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-analytics-compat.js"></script>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -448,7 +447,7 @@
             width: 100%;
             height: 100%;
             background-color: rgba(0, 0, 0, 0.8);
-            display: flex;
+            display: none;
             align-items: center;
             justify-content: center;
             z-index: 10000;
@@ -504,6 +503,20 @@
             font-size: 14px;
             margin-left: 20px;
         }
+        
+        .login-error {
+            display: none;
+            background-color: #FEE2E2;
+            border: 1px solid #FECACA;
+            color: #DC2626;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+        }
+        
+        .login-error.show {
+            display: block;
+        }
     </style>
 </head>
 <body class="bg-gray-100 p-4">
@@ -515,7 +528,7 @@
     </div>
 
     <!-- Modal de Login -->
-    <div id="loginModal" class="login-modal" style="display: none;">
+    <div id="loginModal" class="login-modal">
         <div class="login-box">
             <h2 class="text-2xl font-bold titulo-cor mb-2">Acesso ao Sistema</h2>
             <p class="mb-6 text-gray-600 text-sm">Faça login para sincronizar seus dados na nuvem</p>
@@ -525,9 +538,9 @@
                 <button class="login-tab" id="tabSignup">Cadastrar</button>
             </div>
             
-            <div id="loginError" class="text-red-500 text-sm mb-4 hidden p-3 bg-red-50 rounded">
+            <div id="loginError" class="login-error">
                 <i class="fas fa-exclamation-circle mr-1"></i>
-                <span id="errorText"></span>
+                <span id="errorText">Mensagem de erro aparecerá aqui</span>
             </div>
             
             <!-- Formulário de Login -->
@@ -596,7 +609,7 @@
             <div class="menu-logo">
                 <i class="fas fa-calculator"></i>
                 <span>Folha de Pagamento</span>
-                <div id="userInfo" class="user-info" style="display: none;">
+                <div id="userInfo" class="user-info">
                     <i class="fas fa-user-circle"></i>
                     <span id="userEmail"></span>
                 </div>
@@ -1236,7 +1249,7 @@
 
     <script>
         // ============================================
-        // CONFIGURAÇÃO DO FIREBASE (COM SUAS CREDENCIAIS)
+        // CONFIGURAÇÃO DO FIREBASE
         // ============================================
         
         const firebaseConfig = {
@@ -1251,16 +1264,20 @@
 
         // Inicializar Firebase
         try {
-            firebase.initializeApp(firebaseConfig);
-            console.log("✅ Firebase inicializado com sucesso!");
+            if (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length === 0) {
+                firebase.initializeApp(firebaseConfig);
+                console.log("✅ Firebase inicializado com sucesso!");
+            }
         } catch (error) {
             console.error("❌ Erro ao inicializar Firebase:", error);
         }
 
         // Inicializar serviços
-        const db = firebase.firestore();
-        const auth = firebase.auth();
-        const analytics = firebase.analytics();
+        let db, auth;
+        if (typeof firebase !== 'undefined') {
+            db = firebase.firestore();
+            auth = firebase.auth();
+        }
 
         // Variáveis globais
         let currentUser = null;
@@ -1272,19 +1289,24 @@
         // ============================================
         
         // Monitorar estado de autenticação
-        auth.onAuthStateChanged((user) => {
-            updateAuthUI(user);
-            
-            if (user) {
-                currentUser = user;
-                isOnline = true;
-                loadUserData();
-            } else {
-                currentUser = null;
-                isOnline = false;
-                userData = null;
-            }
-        });
+        if (auth) {
+            auth.onAuthStateChanged((user) => {
+                updateAuthUI(user);
+                
+                if (user) {
+                    currentUser = user;
+                    isOnline = true;
+                    loadUserData();
+                } else {
+                    currentUser = null;
+                    isOnline = false;
+                    userData = null;
+                }
+            });
+        } else {
+            console.warn("Firebase Auth não disponível - modo offline");
+            updateAuthUI(null);
+        }
 
         // Atualizar interface de autenticação
         function updateAuthUI(user) {
@@ -1294,40 +1316,30 @@
             const userEmail = document.getElementById('userEmail');
             const logoutBtn = document.getElementById('btnLogout');
             
-            if (user) {
+            if (user && auth) {
                 // Usuário logado
                 statusElement.className = 'firebase-status firebase-connected';
                 statusElement.innerHTML = '<i class="fas fa-cloud"></i> <span>Sincronizado com a nuvem</span>';
                 
-                userInfo.style.display = 'flex';
-                userEmail.textContent = user.email;
-                logoutBtn.style.display = 'block';
-                
-                // Mostrar badges de sincronização
-                document.querySelectorAll('.sync-badge').forEach(badge => {
-                    badge.style.display = 'inline-block';
-                });
+                if (userInfo) userInfo.style.display = 'flex';
+                if (userEmail) userEmail.textContent = user.email;
+                if (logoutBtn) logoutBtn.style.display = 'block';
                 
                 // Esconder modal de login se estiver visível
-                if (loginModal.style.display === 'flex') {
+                if (loginModal && loginModal.style.display === 'flex') {
                     loginModal.style.display = 'none';
                 }
                 
             } else {
-                // Usuário não logado
+                // Usuário não logado ou Firebase não disponível
                 statusElement.className = 'firebase-status firebase-disconnected';
                 statusElement.innerHTML = '<i class="fas fa-laptop"></i> <span>Modo offline (apenas local)</span>';
                 
-                userInfo.style.display = 'none';
-                logoutBtn.style.display = 'none';
-                
-                // Esconder badges de sincronização
-                document.querySelectorAll('.sync-badge').forEach(badge => {
-                    badge.style.display = 'none';
-                });
+                if (userInfo) userInfo.style.display = 'none';
+                if (logoutBtn) logoutBtn.style.display = 'none';
                 
                 // Mostrar modal de login se nunca escolheu continuar offline
-                if (!localStorage.getItem('skipLogin') && loginModal.style.display !== 'flex') {
+                if (auth && loginModal && !localStorage.getItem('skipLogin') && loginModal.style.display !== 'flex') {
                     loginModal.style.display = 'flex';
                 }
             }
@@ -1335,7 +1347,7 @@
 
         // Carregar dados do usuário do Firestore
         async function loadUserData() {
-            if (!currentUser) return;
+            if (!currentUser || !db) return;
             
             try {
                 const userDoc = await db.collection('users').doc(currentUser.uid).get();
@@ -1359,14 +1371,14 @@
 
         // Inicializar dados do usuário
         async function initializeUserData() {
-            if (!currentUser) return;
+            if (!currentUser || !db) return;
             
             try {
                 const initialData = {
                     email: currentUser.email,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     lastLogin: firebase.firestore.FieldValue.serverTimestamp(),
-                    departments: DEFAULT_DEPARTMENTS,
+                    departments: [],
                     collaborators: [],
                     calculations: [],
                     lastSync: firebase.firestore.FieldValue.serverTimestamp()
@@ -1383,7 +1395,7 @@
 
         // Sincronizar dados locais com Firebase
         async function syncDataWithFirebase() {
-            if (!currentUser || !userData) return;
+            if (!currentUser || !userData || !db) return;
             
             try {
                 // Sincronizar departamentos
@@ -1426,7 +1438,7 @@
 
         // Atualizar dados no Firebase
         async function updateFirebaseData(field, data) {
-            if (!currentUser) return;
+            if (!currentUser || !db) return;
             
             try {
                 await db.collection('users').doc(currentUser.uid).update({
@@ -1447,6 +1459,7 @@
         // Atualizar status do Firebase na interface
         function updateFirebaseStatus(type, message) {
             const statusElement = document.getElementById('firebaseStatus');
+            if (!statusElement) return;
             
             switch(type) {
                 case 'success':
@@ -1474,7 +1487,7 @@
             document.getElementById('tabSignup').classList.remove('active');
             document.getElementById('loginForm').style.display = 'block';
             document.getElementById('signupForm').style.display = 'none';
-            document.getElementById('loginError').classList.add('hidden');
+            document.getElementById('loginError').classList.remove('show');
         });
         
         document.getElementById('tabSignup').addEventListener('click', () => {
@@ -1482,7 +1495,7 @@
             document.getElementById('tabLogin').classList.remove('active');
             document.getElementById('loginForm').style.display = 'none';
             document.getElementById('signupForm').style.display = 'block';
-            document.getElementById('loginError').classList.add('hidden');
+            document.getElementById('loginError').classList.remove('show');
         });
 
         // Login
@@ -1494,7 +1507,7 @@
             
             if (!email || !password) {
                 errorText.textContent = 'Por favor, preencha email e senha.';
-                errorElement.classList.remove('hidden');
+                errorElement.classList.add('show');
                 return;
             }
             
@@ -1502,13 +1515,13 @@
             
             try {
                 await auth.signInWithEmailAndPassword(email, password);
-                errorElement.classList.add('hidden');
+                errorElement.classList.remove('show');
                 updateFirebaseStatus('success', 'Login realizado!');
                 
             } catch (error) {
                 console.error('❌ Erro no login:', error);
                 errorText.textContent = getFirebaseErrorMessage(error.code);
-                errorElement.classList.remove('hidden');
+                errorElement.classList.add('show');
                 updateFirebaseStatus('error', 'Erro no login');
             }
         });
@@ -1523,19 +1536,19 @@
             
             if (!email || !password || !confirmPassword) {
                 errorText.textContent = 'Por favor, preencha todos os campos.';
-                errorElement.classList.remove('hidden');
+                errorElement.classList.add('show');
                 return;
             }
             
             if (password !== confirmPassword) {
                 errorText.textContent = 'As senhas não coincidem.';
-                errorElement.classList.remove('hidden');
+                errorElement.classList.add('show');
                 return;
             }
             
             if (password.length < 6) {
                 errorText.textContent = 'A senha deve ter pelo menos 6 caracteres.';
-                errorElement.classList.remove('hidden');
+                errorElement.classList.add('show');
                 return;
             }
             
@@ -1543,13 +1556,13 @@
             
             try {
                 await auth.createUserWithEmailAndPassword(email, password);
-                errorElement.classList.add('hidden');
+                errorElement.classList.remove('show');
                 updateFirebaseStatus('success', 'Conta criada com sucesso!');
                 
             } catch (error) {
                 console.error('❌ Erro no cadastro:', error);
                 errorText.textContent = getFirebaseErrorMessage(error.code);
-                errorElement.classList.remove('hidden');
+                errorElement.classList.add('show');
                 updateFirebaseStatus('error', 'Erro no cadastro');
             }
         });
@@ -1585,7 +1598,7 @@
         }
 
         // ============================================
-        // FUNÇÕES DE ARMAZENAMENTO (AGORA COM FIREBASE)
+        // FUNÇÕES DE ARMAZENAMENTO
         // ============================================
         
         const COLLABORATORS_STORAGE_KEY = 'folha_colaboradores_cadastrados';
@@ -1628,7 +1641,7 @@
             localStorage.setItem(DEPARTMENTS_STORAGE_KEY, JSON.stringify(departments));
             
             // Se estiver logado, salvar no Firebase também
-            if (currentUser) {
+            if (currentUser && db) {
                 try {
                     await updateFirebaseData('departments', departments);
                     updateFirebaseStatus('success', 'Departamentos sincronizados');
@@ -1647,7 +1660,7 @@
         async function saveCollaborators(collaborators) {
             localStorage.setItem(COLLABORATORS_STORAGE_KEY, JSON.stringify(collaborators));
             
-            if (currentUser) {
+            if (currentUser && db) {
                 try {
                     await updateFirebaseData('collaborators', collaborators);
                     updateFirebaseStatus('success', 'Colaboradores sincronizados');
@@ -1665,7 +1678,7 @@
         async function saveCalculations(calculations) {
             localStorage.setItem(CALCULATIONS_STORAGE_KEY, JSON.stringify(calculations));
             
-            if (currentUser) {
+            if (currentUser && db) {
                 try {
                     await updateFirebaseData('calculations', calculations);
                     updateFirebaseStatus('success', 'Cálculos sincronizados');
@@ -1713,7 +1726,7 @@
         }
 
         // ============================================
-        // FUNÇÕES GERAIS E DE CÁLCULO (MANTIDAS)
+        // FUNÇÕES GERAIS E DE CÁLCULO
         // ============================================
         
         // Função utilitária para formatação de moeda
@@ -3363,6 +3376,11 @@
         // ============================================
         
         document.addEventListener('DOMContentLoaded', () => {
+            console.log("🚀 Aplicação inicializada");
+            
+            // Inicializar Firebase status
+            updateFirebaseStatus('loading', 'Inicializando...');
+            
             // Inicializar elementos da calculadora
             const monthInput = document.getElementById('mesReferencia');
             const salarioBaseInput = document.getElementById('salarioBase');
@@ -3533,10 +3551,13 @@
             // Calcular inicialmente
             calcular();
             
-            // Atualizar status inicial do Firebase
-            updateFirebaseStatus('loading', 'Conectando ao Firebase...');
+            // Depois de 2 segundos, se não estiver logado, mostrar status normal
+            setTimeout(() => {
+                if (!currentUser) {
+                    updateFirebaseStatus('disconnected', 'Modo offline (apenas local)');
+                }
+            }, 2000);
         });
     </script>
-
 </body>
 </html>
